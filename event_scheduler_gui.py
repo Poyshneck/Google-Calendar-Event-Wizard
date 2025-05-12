@@ -6,6 +6,33 @@ from tkinter import messagebox
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from google.auth.transport.requests import Request  # <-- this was missing
+
+##### Make sure you look for the correct timezone before running the script.
+
+
+
+# Any addtional revisions will be listed in a separate revisions doc. 
+# ===========================================
+# Revision 4 - 2025-05-11 19:08 MDT
+# Changes made:
+# 1. Fixed missing import for Request() from google.auth.transport.requests.
+# 2. Replaced <KeyRelease> auto-formatting with input validation via validatecommand on each keystroke.
+# 3. Implemented clean auto-formatting for both Date and Time fields on <FocusOut> event.
+# 4. Ensured numeric-only input for both Date (MM-DD-YYYY) and Time (HH:MM) fields.
+# 5. Eliminated backspacing and cursor jump issues in date and time entry fields.
+# 6. Retained Google Calendar API integration, reminders, and event creation logic.
+# ===========================================
+
+# ===========================================
+# Revision 3 - 2025-05-11 18:42 MDT
+# Changes made:
+# 1. Replaced problematic <KeyRelease> event binding with input validation on keystroke.
+# 2. Added clean auto-formatting for date and time fields on <FocusOut>.
+# 3. Prevented cursor backspacing issue during typing.
+# 4. Retained numeric-only input for both date and time fields.
+# 5. Fixed missing Request() import from google.auth.transport.requests
+# ===========================================
 
 # ===========================================
 # Revision 2 - 2025-05-11
@@ -25,8 +52,6 @@ from googleapiclient.discovery import build
 # 4. Removed automatic time adjustments
 # ===========================================
 
-# Define the required Google Calendar API scopes
-# This scope allows the application to read and write calendar events
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def get_calendar_service():
@@ -37,68 +62,21 @@ def get_calendar_service():
         service: Google Calendar API service object
     """
     creds = None
-    # Check if we have existing valid credentials
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    # If no valid credentials exist, get new ones
+    
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            # Create new credentials through OAuth flow
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials for future use
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
-    # Build and return the Calendar API service
+
     service = build('calendar', 'v3', credentials=creds)
     return service
-
-def format_date_input(text):
-    """
-    Formats the date input as MM-DD-YYYY with automatic dash insertion.
-    Args:
-        text: The current input value (string)
-    Returns:
-        str: Formatted date string
-    """
-    digits = ''.join(filter(str.isdigit, text))
-    result = ''
-    if len(digits) >= 1:
-        result += digits[:2]
-    if len(digits) >= 3:
-        result = result[:2] + '-' + digits[2:4]
-    if len(digits) >= 5:
-        result = result[:5] + '-' + digits[4:8]
-    return result
-
-def format_time_input(text):
-    """
-    Formats the time input as HH:MM with automatic colon insertion.
-    Args:
-        text: The current input value (string)
-    Returns:
-        str: Formatted time string
-    """
-    digits = ''.join(filter(str.isdigit, text))
-    result = ''
-    if len(digits) >= 1:
-        result += digits[:2]
-    if len(digits) >= 3:
-        result = result[:2] + ':' + digits[2:4]
-    else:
-        result = digits
-    return result
-
-def validate_date(P):
-    """Restricts date input field length to 10 characters."""
-    return len(P) <= 10
-
-def validate_time(P):
-    """Restricts time input field length to 5 characters."""
-    return len(P) <= 5
 
 def add_event_to_calendar(summary, date_str, time_str):
     """
@@ -110,22 +88,24 @@ def add_event_to_calendar(summary, date_str, time_str):
     """
     try:
         service = get_calendar_service()
-        # Convert MM-DD-YYYY to YYYY-MM-DD for Google Calendar
-        month, day, year = date_str.split('-')
-        formatted_date = f"{year}-{month}-{day}"
-        event_datetime = f"{formatted_date}T{time_str}:00"
 
-        # Create event object with all required fields
+        # Convert MM-DD-YYYY and HH:MM to a datetime object
+        month, day, year = date_str.split('-')
+        event_start = datetime.datetime(
+            int(year), int(month), int(day),
+            int(time_str.split(':')[0]),
+            int(time_str.split(':')[1])
+        )
+
         event = {
             'summary': summary,
             'start': {
-                'dateTime': event_datetime,
-                'timeZone': 'America/Chicago',
+                'dateTime': event_start.isoformat(),
+                'timeZone': 'America/Denver', # This is the timezone for Denver, Colorado, change if needed.
             },
             'end': {
-                # Adds 1 hour to start time
-                'dateTime': (datetime.datetime.fromisoformat(event_datetime) + datetime.timedelta(hours=1)).isoformat(),
-                'timeZone': 'America/Chicago',
+                'dateTime': (event_start + datetime.timedelta(hours=1)).isoformat(),
+                'timeZone': 'America/Denver', # This is the timezone for Denver, Colorado, change if needed.
             },
             'reminders': {
                 'useDefault': False,
@@ -135,11 +115,13 @@ def add_event_to_calendar(summary, date_str, time_str):
                 ],
             },
         }
-        # Insert the event into the calendar
+
         event = service.events().insert(calendarId='primary', body=event).execute()
         messagebox.showinfo("Success", f"Event created!\n{event.get('htmlLink')}")
+
     except Exception as e:
         messagebox.showerror("Error", str(e))
+
 
 def submit_event():
     """
@@ -150,79 +132,75 @@ def submit_event():
     date = entry_date.get()
     time = entry_time.get()
 
-    # Validate that all fields are filled
     if not name or not date or not time:
         messagebox.showwarning("Input Error", "Please fill in all fields.")
         return
 
-    # Validate date and time formats
     try:
         month, day, year = date.split('-')
         if not (1 <= int(month) <= 12 and 1 <= int(day) <= 31 and len(year) == 4):
             messagebox.showwarning("Input Error", "Invalid date format. Please use MM-DD-YYYY.")
             return
-        hr, min = time.split(':')
-        if not (0 <= int(hr) <= 23 and 0 <= int(min) <= 59):
-            messagebox.showwarning("Input Error", "Invalid time format. Please use HH:MM (24hr).")
-            return
     except ValueError:
-        messagebox.showwarning("Input Error", "Invalid date or time format.")
+        messagebox.showwarning("Input Error", "Invalid date format. Please use MM-DD-YYYY.")
         return
 
     add_event_to_calendar(name, date, time)
-
-# ================= GUI Layout =================
 
 # Create the main application window
 root = tk.Tk()
 root.title("John's Event App")
 
-# Create and layout the input fields
+# Event/Task Name
 tk.Label(root, text="Event/Task Name:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
 entry_name = tk.Entry(root, width=30)
 entry_name.grid(row=0, column=1, padx=10, pady=5)
 
-# Date input field with validation and auto-formatting
+# Date input field with validation (numeric only, no backspacing issue)
 tk.Label(root, text="Date (MM-DD-YYYY):").grid(row=1, column=0, padx=10, pady=5, sticky="e")
-vcmd_date = (root.register(validate_date), '%P')
+def validate_date_input(P):
+    return P == "" or (P.replace("-", "").isdigit() and len(P.replace("-", "")) <= 8)
+
+vcmd_date = (root.register(validate_date_input), '%P')
 entry_date = tk.Entry(root, width=30, validate='key', validatecommand=vcmd_date)
 entry_date.grid(row=1, column=1, padx=10, pady=5)
 
-def on_date_key_release(event):
-    """
-    Formats the date input on key release and maintains cursor position.
-    """
-    current_value = entry_date.get()
-    cursor_pos = entry_date.index(tk.INSERT)
-    formatted_value = format_date_input(current_value)
-    entry_date.delete(0, tk.END)
-    entry_date.insert(0, formatted_value)
-    entry_date.icursor(min(cursor_pos, len(formatted_value)))
+def format_date_on_focus_out(event):
+    digits = ''.join(filter(str.isdigit, entry_date.get()))
+    if len(digits) >= 4:
+        formatted = digits[:2] + '-' + digits[2:4]
+        if len(digits) >= 8:
+            formatted += '-' + digits[4:8]
+        entry_date.delete(0, tk.END)
+        entry_date.insert(0, formatted)
 
-entry_date.bind('<KeyRelease>', on_date_key_release)
+entry_date.bind('<FocusOut>', format_date_on_focus_out)
 
-# Time input field with validation and auto-formatting
+# Time input field with validation (numeric only, no backspacing issue)
 tk.Label(root, text="Time (HH:MM 24hr):").grid(row=2, column=0, padx=10, pady=5, sticky="e")
-vcmd_time = (root.register(validate_time), '%P')
+def validate_time_input(P):
+    return P == "" or (P.replace(":", "").isdigit() and len(P.replace(":", "")) <= 4)
+
+vcmd_time = (root.register(validate_time_input), '%P')
 entry_time = tk.Entry(root, width=30, validate='key', validatecommand=vcmd_time)
 entry_time.grid(row=2, column=1, padx=10, pady=5)
 
-def on_time_key_release(event):
-    """
-    Formats the time input on key release and maintains cursor position.
-    """
-    current_value = entry_time.get()
-    cursor_pos = entry_time.index(tk.INSERT)
-    formatted_value = format_time_input(current_value)
-    entry_time.delete(0, tk.END)
-    entry_time.insert(0, formatted_value)
-    entry_time.icursor(min(cursor_pos, len(formatted_value)))
+def format_time_on_focus_out(event):
+    digits = ''.join(filter(str.isdigit, entry_time.get()))
+    if len(digits) >= 2:
+        formatted = digits[:2]
+        if len(digits) >= 4:
+            formatted += ':' + digits[2:4]
+        elif len(digits) > 2:
+            formatted += ':' + digits[2:]
+        entry_time.delete(0, tk.END)
+        entry_time.insert(0, formatted)
 
-entry_time.bind('<KeyRelease>', on_time_key_release)
+entry_time.bind('<FocusOut>', format_time_on_focus_out)
 
-# Submit button to trigger event creation
+# Submit button
 submit_btn = tk.Button(root, text="Add Event to Calendar", command=submit_event)
 submit_btn.grid(row=3, column=0, columnspan=2, pady=15)
 
-# Start the application event loop
+# Start the application
 root.mainloop()
