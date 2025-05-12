@@ -8,7 +8,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 # ===========================================
-# Revision 2 - 2025-05-12
+# Revision 2 - 2025-05-11
 # Changes made:
 # 1. Added date format validation and auto-formatting for MM-DD-YYYY
 # 2. Added time format validation and auto-formatting for HH:MM
@@ -17,7 +17,7 @@ from googleapiclient.discovery import build
 # ===========================================
 
 # ===========================================
-# Revision 1 - 2024-03-19
+# Revision 1 - 2025-05-11
 # Changes made:
 # 1. Added date format validation and auto-formatting for MM-DD-YYYY
 # 2. Added automatic cursor movement for date input
